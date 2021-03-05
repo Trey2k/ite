@@ -52,7 +52,7 @@ void keyHandler(WINDOW *win, sCursor *cursor, int ch){
 				cursor->x = 0;
 				cursor->y++;
 		}else if(cursor->x < 0){
-				cursor->x = 0;
+				cursor->x = cursor->maxX;
 				cursor->y--;
 		}
 		
