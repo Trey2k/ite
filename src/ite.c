@@ -1,8 +1,17 @@
 #include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 #include "key_defs.h"
+
+typedef struct{
+	int x;
+	int y;
+	int maxX;
+	int maxY;
+} sCursor;
 
 int fileExists(const char *fname){
 	FILE *file;
@@ -22,10 +31,52 @@ int fileWritePerms(const char *fname){
 	return 0;
 }
 
-void keyHandler(int ch, bool *running){
-	if(ch == EXCAPE){
-		*running = false;
-	}
+void keyHandler(WINDOW *win, sCursor *cursor, int ch){
+	switch (ch)
+        {
+          case KEY_LEFT:
+            cursor->x--;
+            break;
+          case KEY_RIGHT:
+            cursor->x++;
+            break;
+          case KEY_UP:
+		  	cursor->y--;
+            break;
+          case KEY_DOWN:
+            cursor->y++;
+            break;
+        }
+
+		if(cursor->x > cursor->maxX){
+				cursor->x = 0;
+				cursor->y++;
+		}else if(cursor->x < 0){
+				cursor->x = 0;
+				cursor->y--;
+		}
+		
+		if(cursor->y < 0){
+				cursor->y = 0;
+		}else if(cursor->y > cursor->maxY){
+				cursor->y = cursor->maxY;
+		}
+
+	attron(COLOR_PAIR(1));
+	mvprintw(0, 0, "Press Esc to exit Text Editor (%d, %d)", cursor->x, cursor->y);
+	refresh();
+	
+	wmove(win, cursor->y, cursor->x);
+	wrefresh(win);
+}
+
+WINDOW *createNewWin(int height, int width, int startY, int startX){
+	WINDOW *win;
+
+	win = newwin(height, width, startY, startX);
+  	wrefresh(win);
+
+	return win;
 }
 
 void editor(const char *fname){
@@ -42,15 +93,54 @@ void editor(const char *fname){
 	char *fcontent = malloc(size); //Allocationg space for the file in memory
 	fread(fcontent, 1, size, file); //Reading content from file
 
-	initscr(); //Ncruses init
-	bool running = true;
-	addstr(fcontent);
+	WINDOW *editor;
+	int startX, startY, width, height;
+	int ch;
+
+	initscr();
+
+	start_color();
+	init_pair(1, COLOR_BLACK, COLOR_RED);
+	init_pair(1, COLOR_BLACK, COLOR_GREEN);
+
+	cbreak();
+	keypad(stdscr, true);
+	noecho();
+
+	struct winsize w;
+    	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+
+	startY = 1;
+	startX = 5;
+	height = w.ws_row - startY;
+	width = w.ws_col - startX;
+
+	editor = createNewWin(height, width, startY, startX);
+
+	wrefresh(editor);
+
+	sCursor cursor;
+	cursor.y = 0;
+	cursor.x = 0;
+	cursor.maxY = height-1;
+	cursor.maxX = width;
+
+	
+	attron(COLOR_PAIR(1));
+	printw("Press Esc to exit Text Editor (%d, %d)", cursor.x, cursor.y);
 	refresh();
 
-	while(running){
-		int ch;
-		ch = getch(); //Get key press events
-		keyHandler(ch, &running);
+	wmove(editor, cursor.y, cursor.x);
+
+	attron(COLOR_PAIR(2));
+	wprintw(editor, fcontent);
+	wmove(editor, cursor.y, cursor.x);
+
+	wrefresh(editor);
+
+	while((ch = getch()) != ESCAPE){ //Get key events and quit if excape is pressed
+
+		keyHandler(editor, &cursor, ch);
 	}
 	endwin();
 	fclose(file);
