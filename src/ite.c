@@ -31,7 +31,9 @@ int fileWritePerms(const char *fname){
 	return 0;
 }
 
-void keyHandler(WINDOW *win, sCursor *cursor, int ch){
+void keyHandler(int *offset, sCursor *cursor, int ch){
+	char toPrint = -1;
+	int index;
 	switch (ch)
         {
           case KEY_LEFT:
@@ -46,14 +48,20 @@ void keyHandler(WINDOW *win, sCursor *cursor, int ch){
           case KEY_DOWN:
             cursor->y++;
             break;
+		  default:
+			index = cursor->x*cursor->y;
+			//fcontent[index] = ch;
         }
 
 		if(cursor->x > cursor->maxX){
-				cursor->x = 0;
-				cursor->y++;
+				//cursor->x = 0;
+				//cursor->y++;
+				cursor->x = cursor->maxX;
+				(*offset)++;
 		}else if(cursor->x < 0){
 				cursor->x = cursor->maxX;
 				cursor->y--;
+				
 		}
 		
 		if(cursor->y < 0){
@@ -61,13 +69,7 @@ void keyHandler(WINDOW *win, sCursor *cursor, int ch){
 		}else if(cursor->y > cursor->maxY){
 				cursor->y = cursor->maxY;
 		}
-
-	attron(COLOR_PAIR(1));
-	mvprintw(0, 0, "Press Esc to exit Text Editor (%d, %d)", cursor->x, cursor->y);
-	refresh();
 	
-	wmove(win, cursor->y, cursor->x);
-	wrefresh(win);
 }
 
 WINDOW *createNewWin(int height, int width, int startY, int startX){
@@ -77,6 +79,28 @@ WINDOW *createNewWin(int height, int width, int startY, int startX){
   	wrefresh(win);
 
 	return win;
+}
+
+void updateDisplayBuffer(int offsetX, int width, int size, char *fcontent, char *displayBuffer){
+	int index = 0;
+	int cols = 0;
+	for(int i = offsetX; i < size; i++){
+		if(fcontent[i] == '\n'){
+			if(cols <= width){
+				displayBuffer[index++] = '\n';
+			}
+			cols = 0;
+			i+=offsetX;
+		}else{
+			if(cols < width){
+				displayBuffer[index++] = fcontent[i];
+			}else if (cols == width){
+				displayBuffer[index++] = '\n';
+			}
+
+			cols++;
+		}
+	}
 }
 
 void editor(const char *fname){
@@ -101,7 +125,7 @@ void editor(const char *fname){
 
 	start_color();
 	init_pair(1, COLOR_BLACK, COLOR_RED);
-	init_pair(1, COLOR_BLACK, COLOR_GREEN);
+	init_pair(2, COLOR_BLACK, COLOR_GREEN);
 
 	cbreak();
 	keypad(stdscr, true);
@@ -115,6 +139,13 @@ void editor(const char *fname){
 	height = w.ws_row - startY;
 	width = w.ws_col - startX;
 
+	char *displayBuffer = malloc(width*height);
+
+	int offset = 0;
+
+	updateDisplayBuffer(offset, width, size, fcontent, displayBuffer);
+
+
 	editor = createNewWin(height, width, startY, startX);
 
 	wrefresh(editor);
@@ -123,24 +154,38 @@ void editor(const char *fname){
 	cursor.y = 0;
 	cursor.x = 0;
 	cursor.maxY = height-1;
-	cursor.maxX = width;
+	cursor.maxX = width-1;
+
 
 	
 	attron(COLOR_PAIR(1));
 	printw("Press Esc to exit Text Editor (%d, %d)", cursor.x, cursor.y);
 	refresh();
 
-	wmove(editor, cursor.y, cursor.x);
+	wmove(editor, 0, 0);
 
 	attron(COLOR_PAIR(2));
-	wprintw(editor, fcontent);
+	wprintw(editor, displayBuffer);
 	wmove(editor, cursor.y, cursor.x);
 
 	wrefresh(editor);
 
 	while((ch = getch()) != ESCAPE){ //Get key events and quit if excape is pressed
+		keyHandler(&offset, &cursor, ch);
+		updateDisplayBuffer(offset, width, size, fcontent, displayBuffer);
 
-		keyHandler(editor, &cursor, ch);
+		attron(COLOR_PAIR(2));
+		mvprintw(0, 0, "Press Esc to exit Text Editor (%d, %d)", cursor.x, cursor.y);
+		refresh();
+		
+		wmove(editor, 0, 0);
+
+		attron(COLOR_PAIR(1));
+
+		wprintw(editor, displayBuffer);
+		
+		wmove(editor, cursor.y, cursor.x);
+		wrefresh(editor);
 	}
 	endwin();
 	fclose(file);
