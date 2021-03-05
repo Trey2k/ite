@@ -59,8 +59,10 @@ void keyHandler(int *offset, sCursor *cursor, int ch){
 				cursor->x = cursor->maxX;
 				(*offset)++;
 		}else if(cursor->x < 0){
-				cursor->x = cursor->maxX;
-				cursor->y--;
+				//cursor->x = cursor->maxX;
+				//cursor->y--;
+				cursor->x = 0;
+				(*offset)--;
 				
 		}
 		
@@ -84,21 +86,25 @@ WINDOW *createNewWin(int height, int width, int startY, int startX){
 void updateDisplayBuffer(int offsetX, int width, int size, char *fcontent, char *displayBuffer){
 	int index = 0;
 	int cols = 0;
-	for(int i = offsetX; i < size; i++){
+	int chars = 0;
+	for(int i = 0; i < size; i++){
 		if(fcontent[i] == '\n'){
 			if(cols <= width){
 				displayBuffer[index++] = '\n';
 			}
 			cols = 0;
-			i+=offsetX;
+			chars = 0;
 		}else{
-			if(cols < width){
-				displayBuffer[index++] = fcontent[i];
-			}else if (cols == width){
-				displayBuffer[index++] = '\n';
-			}
+			if(chars >= offsetX){
+				if(cols < width){
+					displayBuffer[index++] = fcontent[i];
+				}else if (cols == width){
+					displayBuffer[index++] = '\n';
+				}
 
-			cols++;
+				cols++;
+			}
+			chars++;
 		}
 	}
 }
@@ -158,13 +164,13 @@ void editor(const char *fname){
 
 
 	
-	attron(COLOR_PAIR(1));
+	attron(COLOR_PAIR(2));
 	printw("Press Esc to exit Text Editor (%d, %d)", cursor.x, cursor.y);
 	refresh();
 
 	wmove(editor, 0, 0);
 
-	attron(COLOR_PAIR(2));
+	use_default_colors();
 	wprintw(editor, displayBuffer);
 	wmove(editor, cursor.y, cursor.x);
 
@@ -179,8 +185,6 @@ void editor(const char *fname){
 		refresh();
 		
 		wmove(editor, 0, 0);
-
-		attron(COLOR_PAIR(1));
 
 		wprintw(editor, displayBuffer);
 		
