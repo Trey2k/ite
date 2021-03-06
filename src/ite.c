@@ -31,41 +31,70 @@ int fileWritePerms(const char *fname){
 	return 0;
 }
 
-void keyHandler(int *offset, sCursor *cursor, int ch){
+void keyHandler(int width, int rowCount, int *offset, int *contentLength, sCursor *cursor, int ch){
 	char toPrint = -1;
 	int index;
+	bool xChange = false;
+	bool yChange = false;
 	switch (ch)
         {
           case KEY_LEFT:
             cursor->x--;
+			xChange = true;
             break;
           case KEY_RIGHT:
             cursor->x++;
+			xChange = true;
             break;
           case KEY_UP:
 		  	cursor->y--;
+			  yChange = true;
             break;
           case KEY_DOWN:
             cursor->y++;
+			yChange = true;
             break;
 		  default:
 			index = cursor->x*cursor->y;
 			//fcontent[index] = ch;
         }
 
-		if(cursor->x > cursor->maxX){
-				//cursor->x = 0;
-				//cursor->y++;
-				cursor->x = cursor->maxX;
-				(*offset)++;
+		if(cursor->x > cursor->maxX || (cursor->x+(*offset) > contentLength[cursor->y] && xChange)){
+				if((*offset)+width+1 > contentLength[cursor->y]){
+					(*offset)=0;
+					cursor->x = 0;
+					cursor->y++;
+				}else{
+					cursor->x = cursor->maxX;
+					(*offset)++;
+				}
 		}else if(cursor->x < 0){
-				//cursor->x = cursor->maxX;
-				//cursor->y--;
-				cursor->x = 0;
-				(*offset)--;
-				
+				if((*offset)-1 <= 0){
+					cursor->x = cursor->maxX;
+					cursor->y--;
+					(*offset) = contentLength[cursor->y]-width;
+					if((*offset) <= 0){
+						(*offset)=0;
+						cursor->x = contentLength[cursor->y];
+					}
+				}else{
+					cursor->x = 0;
+					(*offset)--;
+				}
+		}else if(cursor->x+(*offset) > contentLength[cursor->y] && yChange){
+			if(contentLength[cursor->y]-(*offset) < 0){
+				(*offset) = contentLength[cursor->y]-width;
+				if((*offset) < 0){
+					(*offset) = 0;
+				}
+			}
+			cursor->x = contentLength[cursor->y]-(*offset);
 		}
 		
+		if(cursor->y > rowCount){
+			cursor->y = rowCount;
+		}
+
 		if(cursor->y < 0){
 				cursor->y = 0;
 		}else if(cursor->y > cursor->maxY){
@@ -83,29 +112,37 @@ WINDOW *createNewWin(int height, int width, int startY, int startX){
 	return win;
 }
 
-void updateDisplayBuffer(int offsetX, int width, int size, char *fcontent, char *displayBuffer){
-	int index = 0;
+void updateDisplayBuffer(int offsetX, int width, int height, int size, char *fcontent, char **displayBuffer){
+	int rows = 0;
 	int cols = 0;
 	int chars = 0;
-	for(int i = 0; i < size; i++){
-		if(fcontent[i] == '\n'){
-			if(cols <= width){
-				displayBuffer[index++] = '\n';
-			}
-			cols = 0;
-			chars = 0;
-		}else{
-			if(chars >= offsetX){
-				if(cols < width){
-					displayBuffer[index++] = fcontent[i];
-				}else if (cols == width){
-					displayBuffer[index++] = '\n';
-				}
 
-				cols++;
-			}
-			chars++;
+	for(int i = 0; i < height; i++){
+		for(int y = 0; y < width; y++){
+			displayBuffer[i][y]= '\0';
 		}
+	}
+
+	for(int i = 0; i < size; i++){
+			if(fcontent[i] == '\n'){
+				if(cols <= width){
+					displayBuffer[rows][cols] = '\n';
+				}
+				cols = 0;
+				chars = 0;
+				rows++;
+			}else{
+				if(chars >= offsetX){
+					if(cols < width){
+						displayBuffer[rows][cols] = fcontent[i];
+					}else if (cols == width){
+						displayBuffer[rows][cols] = '\n';
+					}
+
+					cols++;
+				}
+				chars++;
+			}
 	}
 }
 
@@ -123,9 +160,16 @@ void editor(const char *fname){
 	char *fcontent = malloc(size); //Allocationg space for the file in memory
 	fread(fcontent, 1, size, file); //Reading content from file
 
+	/*for(int i = 0; i < size; i++){
+		printf("%c", fcontent[i]);
+	}*/
+	//exit(0);
+
 	WINDOW *editor;
 	int startX, startY, width, height;
 	int ch;
+
+	int rowCount = 0;
 
 	initscr();
 
@@ -145,11 +189,49 @@ void editor(const char *fname){
 	height = w.ws_row - startY;
 	width = w.ws_col - startX;
 
-	char *displayBuffer = malloc(width*height);
+	for(int i = 0; i < size; i++){
+		if(fcontent[i] == '\n'){
+			rowCount++;
+		}
+	}
+
+	int *contentLength;
+	contentLength = malloc(rowCount * sizeof(int));
+	if(contentLength == NULL){
+			fprintf(stderr, "out of memory for content length\n");
+			exit(-1);
+	}
+
+	int curRowLength = 0;
+	int rowIndex = 0;
+	for(int i = 0; i < size; i++){
+		curRowLength++;
+		if(fcontent[i] == '\n' && fcontent[i] != EOF){
+			contentLength[rowIndex++] = curRowLength;
+			curRowLength = 0;
+		}
+	}
+
+	char **displayBuffer;
+	displayBuffer = malloc((height * sizeof(char *)));
+	if(displayBuffer == NULL){
+			fprintf(stderr, "out of memory\n");
+			exit(-1);
+	}
+
+	
+	for(int i = 0; i < height; i++){
+		displayBuffer[i] = malloc(width * sizeof(char));
+		if(displayBuffer[i] == NULL){
+			fprintf(stderr, "out of memory\n");
+			exit(-1);
+		}
+	}
+
 
 	int offset = 0;
 
-	updateDisplayBuffer(offset, width, size, fcontent, displayBuffer);
+	updateDisplayBuffer(offset, width, height, size, fcontent, displayBuffer);
 
 
 	editor = createNewWin(height, width, startY, startX);
@@ -165,28 +247,31 @@ void editor(const char *fname){
 
 	
 	attron(COLOR_PAIR(2));
-	printw("Press Esc to exit Text Editor (%d, %d)", cursor.x, cursor.y);
+	printw("Press Esc to exit Text Editor (%d, %d) %d", cursor.x, cursor.y, rowCount);
 	refresh();
 
-	wmove(editor, 0, 0);
-
 	use_default_colors();
-	wprintw(editor, displayBuffer);
+	for(int i = 0; i < height; i++){
+		mvwprintw(editor, i, 0, displayBuffer[i]);
+	}
+	
 	wmove(editor, cursor.y, cursor.x);
 
 	wrefresh(editor);
 
 	while((ch = getch()) != ESCAPE){ //Get key events and quit if excape is pressed
-		keyHandler(&offset, &cursor, ch);
-		updateDisplayBuffer(offset, width, size, fcontent, displayBuffer);
+		keyHandler(width, rowCount, &offset, contentLength, &cursor, ch);
+		updateDisplayBuffer(offset, width, height, size, fcontent, displayBuffer);
 
 		attron(COLOR_PAIR(2));
 		mvprintw(0, 0, "Press Esc to exit Text Editor (%d, %d)", cursor.x, cursor.y);
 		refresh();
 		
-		wmove(editor, 0, 0);
+		
 
-		wprintw(editor, displayBuffer);
+		for(int i = 0; i < height; i++){
+			mvwprintw(editor, i, 0, displayBuffer[i]);
+		}
 		
 		wmove(editor, cursor.y, cursor.x);
 		wrefresh(editor);
