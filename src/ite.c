@@ -202,11 +202,19 @@ void editor(const char *fname){
 			exit(-1);
 	}
 
+	for(int i = 0; i <= rowCount; i++){
+		contentLength[i] = 0;
+	}
+
 	int curRowLength = 0;
 	int rowIndex = 0;
 	for(int i = 0; i < size; i++){
-		curRowLength++;
-		if(fcontent[i] == '\n' && fcontent[i] != EOF){
+		if(fcontent[i] == '\t'){
+			curRowLength+=8;
+		}else{
+			curRowLength++;
+		}
+		if(fcontent[i] == '\n' || fcontent[i] == EOF || fcontent[i] == '\000'){
 			contentLength[rowIndex++] = curRowLength;
 			curRowLength = 0;
 		}
