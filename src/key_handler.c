@@ -1,6 +1,7 @@
 #include "key_handler.h"
 
 #include <ncurses.h>
+#include <stdlib.h>
 
 void keyHandler(sDisplay *display, sContent *content, sCursor *cursor, int ch){
 	int screenPadding = 1; //screenPadding is needed so there is room on the screen for thee cursor to go past the last charector.
