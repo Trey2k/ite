@@ -1,4 +1,5 @@
 object/
+.vscode/
 ite
 
 *.txt
