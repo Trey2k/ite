@@ -79,18 +79,20 @@ void keyHandler(sDisplay *display, sContent *content, sCursor *cursor, int ch){
 void addChar(sDisplay *display, sContent *content, sCursor *cursor, int ch){
     int index = 0;
     char *temp = malloc(++content->size); //Allocationg space for the file in memory
-    cursor->x++;
-
+    if(temp==NULL){
+        fprintf(stderr, "out of memory\n");
+		exit(-1);
+    }
+    
     for(int i = 0; i < cursor->y; i++){
-        index += content->contentLength[cursor->y];
+        index += content->contentLength[i];
     }
 	index += display->offset + cursor->x;
 
     for(int i = 0; i < index; i++){
         temp[i] = content->fcontent[i];
     }
-
-    content->fcontent[index] = ch;
+    temp[index] = ch;
 	
     for(int i = index+1; i < content->size; i++){
         temp[i] = content->fcontent[i-1];
@@ -98,4 +100,11 @@ void addChar(sDisplay *display, sContent *content, sCursor *cursor, int ch){
 
     free(content->fcontent);
     content->fcontent = temp;
+
+    if(ch=='\n'){
+        cursor->y++;
+    }else{
+        cursor->x++;
+    }
+    update(display, content, true);
 }
