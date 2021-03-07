@@ -4,4 +4,6 @@
 #include "display.h"
 
 extern void keyHandler(sDisplay *display, sContent *content, sCursor *cursor, int ch);
+
+void addChar(sDisplay *display, sContent *content, sCursor *cursor, int ch);
 #endif
