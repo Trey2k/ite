@@ -5,6 +5,7 @@
 
 #include "defs.h"
 #include "display.h"
+#include "key_handler.h"
 
 int fileExists(const char *fname){
 	FILE *file;
@@ -22,82 +23,6 @@ int fileWritePerms(const char *fname){
         	return 1;
 	}
 	return 0;
-}
-
-void keyHandler(sDisplay *display, sCursor *cursor, int ch){
-	//char toPrint = -1;
-	//int index;
-	int screenPadding = 1; //screenPadding is needed so there is room on the screen for thee cursor to go past the last charector.
-	bool xChange = false;
-	bool yChange = false;
-	switch (ch)
-        {
-          case KEY_LEFT:
-            cursor->x--;
-			xChange = true;
-            break;
-          case KEY_RIGHT:
-            cursor->x++;
-			xChange = true;
-            break;
-          case KEY_UP:
-		  	cursor->y--;
-			  yChange = true;
-            break;
-          case KEY_DOWN:
-            cursor->y++;
-			yChange = true;
-            break;
-		  //default:
-			//index = cursor->x*cursor->y;
-			//fcontent[index] = ch;
-        }
-
-		//If cursor is going past end of the screen on the right or end of word and it was a change in the X direction, scroll or wrap around
-		if(cursor->x > cursor->maxX || (cursor->x + display->offset > display->displayLength[cursor->y] && xChange)){ 
-				if(display->offset + display->width+1 > display->displayLength[cursor->y]){
-					display->offset = 0;
-					cursor->x = 0;
-					cursor->y++;
-				}else{
-					cursor->x = cursor->maxX;
-					display->offset++;
-				}
-		}//If cursor is going past the end of the screen on the left scroll or wrap around
-		else if(cursor->x < 0){
-				if(display->offset - 1 <= 0){
-					cursor->x = cursor->maxX;
-					cursor->y--;
-					display->offset = display->displayLength[cursor->y] - display->width + screenPadding;
-					if(display->offset <= 0){
-						display->offset = 0;
-						cursor->x = display->displayLength[cursor->y];
-					}
-				}else{
-					cursor->x = 0;
-					display->offset--;
-				}
-		}//If cursor was moved down a line further than edge of the content wrap to content
-		else if(cursor->x + display->offset > display->displayLength[cursor->y] && yChange){
-			if(display->displayLength[cursor->y]- display->offset < 0){
-				display->offset = display->displayLength[cursor->y] - display->width + screenPadding;
-				if(display->offset < 0){
-					display->offset = 0;
-				}
-			}
-			cursor->x = (display->displayLength[cursor->y]) - display->offset;
-		}
-		
-		if(cursor->y > display->rowCount){
-			cursor->y = display->rowCount;
-		}
-
-		if(cursor->y < 0){
-				cursor->y = 0;
-		}else if(cursor->y > cursor->maxY){
-				cursor->y = cursor->maxY;
-		}
-	
 }
 
 void editor(const char *fname){
@@ -251,7 +176,7 @@ void editor(const char *fname){
 
 	int ch;
 	while((ch = getch()) != ESCAPE){ //Get key events and quit if excape is pressed
-		keyHandler(display, cursor, ch);
+		keyHandler(display, content, cursor, ch);
 		updateDisplayBuffer(display, content);
 
 		clear();
