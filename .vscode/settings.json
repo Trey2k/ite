@@ -1,6 +1,13 @@
 {
     "files.associations": {
         "chrono": "c",
-        "algorithm": "c"
+        "algorithm": "c",
+        "ncurses.h": "c",
+        "array": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "ranges": "c",
+        "utility": "c",
+        "valarray": "c"
     }
 }

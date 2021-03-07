@@ -1,17 +1,10 @@
 #include <ncurses.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#include "key_defs.h"
-
-typedef struct{
-	int x;
-	int y;
-	int maxX;
-	int maxY;
-} sCursor;
+#include "defs.h"
+#include "display.h"
 
 int fileExists(const char *fname){
 	FILE *file;
@@ -31,9 +24,10 @@ int fileWritePerms(const char *fname){
 	return 0;
 }
 
-void keyHandler(int width, int rowCount, int *offset, int *contentLength, sCursor *cursor, int ch){
-	char toPrint = -1;
-	int index;
+void keyHandler(sDisplay *display, sCursor *cursor, int ch){
+	//char toPrint = -1;
+	//int index;
+	int screenPadding = 1; //screenPadding is needed so there is room on the screen for thee cursor to go past the last charector.
 	bool xChange = false;
 	bool yChange = false;
 	switch (ch)
@@ -54,45 +48,48 @@ void keyHandler(int width, int rowCount, int *offset, int *contentLength, sCurso
             cursor->y++;
 			yChange = true;
             break;
-		  default:
-			index = cursor->x*cursor->y;
+		  //default:
+			//index = cursor->x*cursor->y;
 			//fcontent[index] = ch;
         }
 
-		if(cursor->x > cursor->maxX || (cursor->x+(*offset) > contentLength[cursor->y] && xChange)){
-				if((*offset)+width+1 > contentLength[cursor->y]){
-					(*offset)=0;
+		//If cursor is going past end of the screen on the right or end of word and it was a change in the X direction, scroll or wrap around
+		if(cursor->x > cursor->maxX || (cursor->x + display->offset > display->displayLength[cursor->y] && xChange)){ 
+				if(display->offset + display->width+1 > display->displayLength[cursor->y]){
+					display->offset = 0;
 					cursor->x = 0;
 					cursor->y++;
 				}else{
 					cursor->x = cursor->maxX;
-					(*offset)++;
+					display->offset++;
 				}
-		}else if(cursor->x < 0){
-				if((*offset)-1 <= 0){
+		}//If cursor is going past the end of the screen on the left scroll or wrap around
+		else if(cursor->x < 0){
+				if(display->offset - 1 <= 0){
 					cursor->x = cursor->maxX;
 					cursor->y--;
-					(*offset) = contentLength[cursor->y]-width;
-					if((*offset) <= 0){
-						(*offset)=0;
-						cursor->x = contentLength[cursor->y];
+					display->offset = display->displayLength[cursor->y] - display->width + screenPadding;
+					if(display->offset <= 0){
+						display->offset = 0;
+						cursor->x = display->displayLength[cursor->y];
 					}
 				}else{
 					cursor->x = 0;
-					(*offset)--;
+					display->offset--;
 				}
-		}else if(cursor->x+(*offset) > contentLength[cursor->y] && yChange){
-			if(contentLength[cursor->y]-(*offset) < 0){
-				(*offset) = contentLength[cursor->y]-width;
-				if((*offset) < 0){
-					(*offset) = 0;
+		}//If cursor was moved down a line further than edge of the content wrap to content
+		else if(cursor->x + display->offset > display->displayLength[cursor->y] && yChange){
+			if(display->displayLength[cursor->y]- display->offset < 0){
+				display->offset = display->displayLength[cursor->y] - display->width + screenPadding;
+				if(display->offset < 0){
+					display->offset = 0;
 				}
 			}
-			cursor->x = contentLength[cursor->y]-(*offset);
+			cursor->x = (display->displayLength[cursor->y]) - display->offset;
 		}
 		
-		if(cursor->y > rowCount){
-			cursor->y = rowCount;
+		if(cursor->y > display->rowCount){
+			cursor->y = display->rowCount;
 		}
 
 		if(cursor->y < 0){
@@ -103,73 +100,32 @@ void keyHandler(int width, int rowCount, int *offset, int *contentLength, sCurso
 	
 }
 
-WINDOW *createNewWin(int height, int width, int startY, int startX){
-	WINDOW *win;
-
-	win = newwin(height, width, startY, startX);
-  	wrefresh(win);
-
-	return win;
-}
-
-void updateDisplayBuffer(int offsetX, int width, int height, int size, char *fcontent, char **displayBuffer){
-	int rows = 0;
-	int cols = 0;
-	int chars = 0;
-
-	for(int i = 0; i < height; i++){
-		for(int y = 0; y < width; y++){
-			displayBuffer[i][y]= '\0';
-		}
-	}
-
-	for(int i = 0; i < size; i++){
-			if(fcontent[i] == '\n'){
-				if(cols <= width){
-					displayBuffer[rows][cols] = '\n';
-				}
-				cols = 0;
-				chars = 0;
-				rows++;
-			}else{
-				if(chars >= offsetX){
-					if(cols < width){
-						displayBuffer[rows][cols] = fcontent[i];
-					}else if (cols == width){
-						displayBuffer[rows][cols] = '\n';
-					}
-
-					cols++;
-				}
-				chars++;
-			}
-	}
-}
-
 void editor(const char *fname){
 
+	set_escdelay(0);
+
 	FILE *file;
+	sContent content[1]; //creating a pointer of the content struct
+
 	if(!(file = fopen(fname, "r+"))){
 		return;
 	}
 
 	fseek(file, 0, SEEK_END); //Getting the size of the file
-	int size = ftell(file);
+	content->size = ftell(file);
 	fseek(file, 0, SEEK_SET);
 
-	char *fcontent = malloc(size); //Allocationg space for the file in memory
-	fread(fcontent, 1, size, file); //Reading content from file
-
-	/*for(int i = 0; i < size; i++){
-		printf("%c", fcontent[i]);
-	}*/
-	//exit(0);
+	content->fcontent = malloc(content->size); //Allocationg space for the file in memory
+	fread(content->fcontent, 1, content->size, file); //Reading content from file
 
 	WINDOW *editor;
-	int startX, startY, width, height;
-	int ch;
+	int startX, startY;
 
-	int rowCount = 0;
+	sDisplay display[1]; //Creating a pointer of the display stufct
+	display->width = 0;
+	display->height = 0;
+	display->rowCount = 0;
+	display->offset = 0;
 
 	initscr();
 
@@ -182,106 +138,135 @@ void editor(const char *fname){
 	noecho();
 
 	struct winsize w;
-    	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
 	startY = 1;
 	startX = 5;
-	height = w.ws_row - startY;
-	width = w.ws_col - startX;
+	display->height = w.ws_row - startY;
+	display->width = w.ws_col - startX;
 
-	for(int i = 0; i < size; i++){
-		if(fcontent[i] == '\n'){
-			rowCount++;
+	//Counting the number of rows
+	for(int i = 0; i < content->size; i++){
+		if(content->fcontent[i] == '\n'){
+			display->rowCount++;
 		}
 	}
 
-	int *contentLength;
-	contentLength = malloc(rowCount * sizeof(int));
-	if(contentLength == NULL){
-			fprintf(stderr, "out of memory for content length\n");
+	//Allocating memory for the contentLength array
+	content->contentLength = malloc(display->rowCount * sizeof(int));
+	if(content->contentLength == NULL){
+			fprintf(stderr, "out of memory\n");
 			exit(-1);
 	}
 
-	for(int i = 0; i <= rowCount; i++){
-		contentLength[i] = 0;
+	
+	for(int i = 0; i <= display->rowCount; i++){
+		content->contentLength[i] = 0;
 	}
 
+	//Filling the content length array
 	int curRowLength = 0;
 	int rowIndex = 0;
-	for(int i = 0; i < size; i++){
-		if(fcontent[i] == '\t'){
-			curRowLength+=8;
-		}else{
-			curRowLength++;
-		}
-		if(fcontent[i] == '\n' || fcontent[i] == EOF || fcontent[i] == '\000'){
-			contentLength[rowIndex++] = curRowLength;
+	for(int i = 0; i < content->size; i++){
+		curRowLength++;
+		if(content->fcontent[i] == '\n' || content->fcontent[i] == EOF || content->fcontent[i] == '\000'){
+			content->contentLength[rowIndex++] = curRowLength;
 			curRowLength = 0;
 		}
 	}
 
-	char **displayBuffer;
-	displayBuffer = malloc((height * sizeof(char *)));
-	if(displayBuffer == NULL){
+	//Allocating memory for the displayLength array (Display length is the current hack around tabs and newlines. In the future we need to check for them on the fly)
+	display->displayLength = malloc(display->rowCount * sizeof(int));
+	if(display->displayLength == NULL){
 			fprintf(stderr, "out of memory\n");
 			exit(-1);
 	}
 
-	
-	for(int i = 0; i < height; i++){
-		displayBuffer[i] = malloc(width * sizeof(char));
-		if(displayBuffer[i] == NULL){
+	for(int i = 0; i <= display->rowCount; i++){
+		display->displayLength[i] = 0;
+	}
+
+	//FIlling the displayLength array
+	curRowLength = 0;
+	rowIndex = 0;
+	for(int i = 0; i < content->size; i++){
+		if(content->fcontent[i] == '\t'){
+			curRowLength+=8;
+		}else if(content->fcontent[i] != '\n'){
+			curRowLength++;
+		}
+		
+		if(content->fcontent[i] == '\n' || content->fcontent[i] == EOF || content->fcontent[i] == '\000'){
+			display->displayLength[rowIndex++] = curRowLength;
+			curRowLength = 0;
+		}
+	}
+
+
+	//Allocating memory for the displayBuffer
+	display->displayBuffer = malloc((display->height * sizeof(char *)));
+	if(display->displayBuffer == NULL){
+			fprintf(stderr, "out of memory\n");
+			exit(-1);
+	}
+
+	//Allocating memory for the displayBuffer of i
+	for(int i = 0; i < display->height; i++){
+		display->displayBuffer[i] = malloc(display->width * sizeof(char));
+		if(display->displayBuffer[i] == NULL){
 			fprintf(stderr, "out of memory\n");
 			exit(-1);
 		}
 	}
 
+	//Updating the display buffer with files content
+	updateDisplayBuffer(display, content);
 
-	int offset = 0;
-
-	updateDisplayBuffer(offset, width, height, size, fcontent, displayBuffer);
-
-
-	editor = createNewWin(height, width, startY, startX);
-
-	wrefresh(editor);
-
-	sCursor cursor;
-	cursor.y = 0;
-	cursor.x = 0;
-	cursor.maxY = height-1;
-	cursor.maxX = width-1;
-
-
+	//Creating the editor window
+	editor = newwin(display->height, display->width, startY, startX);
 	
+
+	sCursor cursor[1]; //Creating a pointer of the cursor struct
+	cursor->y = 0;
+	cursor->x = 0;
+	cursor->maxY = display->height-1;
+	cursor->maxX = display->width-1;
+
+	//Setting color and printing top info
 	attron(COLOR_PAIR(2));
-	printw("Press Esc to exit Text Editor (%d, %d) %d", cursor.x, cursor.y, rowCount);
+	printw("Press Esc to exit Text Editor (X: %d, Y: %d)", cursor->x, cursor->y);
 	refresh();
 
+	//Printing out display buffer
 	use_default_colors();
-	for(int i = 0; i < height; i++){
-		mvwprintw(editor, i, 0, displayBuffer[i]);
+	for(int i = 0; i < display->height; i++){
+		mvwprintw(editor, i, 0, display->displayBuffer[i]);
 	}
 	
-	wmove(editor, cursor.y, cursor.x);
+	//Moving cursor back to original position after printing
+	wmove(editor, cursor->y, cursor->x);
 
+	//Refreshing window
 	wrefresh(editor);
 
+	int ch;
 	while((ch = getch()) != ESCAPE){ //Get key events and quit if excape is pressed
-		keyHandler(width, rowCount, &offset, contentLength, &cursor, ch);
-		updateDisplayBuffer(offset, width, height, size, fcontent, displayBuffer);
+		keyHandler(display, cursor, ch);
+		updateDisplayBuffer(display, content);
+
+		clear();
 
 		attron(COLOR_PAIR(2));
-		mvprintw(0, 0, "Press Esc to exit Text Editor (%d, %d)", cursor.x, cursor.y);
+		mvprintw(0, 0, "Press Esc to exit Text Editor (X: %d, Y: %d)", cursor->x, cursor->y);
 		refresh();
 		
 		
-
-		for(int i = 0; i < height; i++){
-			mvwprintw(editor, i, 0, displayBuffer[i]);
+		//Reprinting displayBuffer to window
+		for(int i = 0; i < display->height; i++){
+			mvwprintw(editor, i, 0, display->displayBuffer[i]);
 		}
 		
-		wmove(editor, cursor.y, cursor.x);
+		wmove(editor, cursor->y, cursor->x);
 		wrefresh(editor);
 	}
 	endwin();
